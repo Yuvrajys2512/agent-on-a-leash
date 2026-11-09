@@ -11,7 +11,10 @@ def write(tmp_path, text):
 
 def test_real_rules_file_loads():
     rs = load_rules("rules.yaml")
-    assert [r.id for r in rs.rules] == ["organise-allowed", "internal-send-allowed", "external-send-ask"]
+    ids = [r.id for r in rs.rules]
+    assert ids[0] == "organise-allowed" and ids[-1] == "external-send-ask"
+    # the block rule must come before the generic external-send rule, because the first match wins
+    assert ids.index("block-injected-external-send") < ids.index("external-send-ask")
 
 
 def test_missing_file(tmp_path):

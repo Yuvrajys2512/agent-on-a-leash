@@ -1,6 +1,7 @@
 # Rules the agent must follow. First matching rule wins.
 # verdict: allow = do it, ask = needs human approval, block = never.
 # If no rule matches, the answer is always "ask".
+# Reasons can use {placeholders} such as {what}, {recipients}, {injection_email}, {injection_phrase}.
 rules:
   - id: organise-allowed
     description: Labelling and moving emails only changes the mailbox, nothing leaves the company.
@@ -8,6 +9,38 @@ rules:
       action_type: [label, move]
     verdict: allow
     reason: Organising emails inside the mailbox is safe.
+
+  - id: block-injected-external-send
+    description: An email must never be able to decide where your data goes. If an email the agent read contains instructions aimed at an AI, nothing may be sent outside the company.
+    when:
+      action_type: [reply, forward]
+      recipient: external
+      flags_all: [injection_suspected]
+    verdict: block
+    reason: >-
+      Blocked: the agent tried to {what} to {recipients}, which is outside the company.
+      It had read email {injection_email} ("{injection_subject}", from {injection_sender}),
+      which contains the instruction "{injection_phrase}". Emails must never decide where your data goes.
+
+  - id: ask-untrusted-recipient
+    description: If the destination address came from the text of an outside email instead of from you, you are warned before approving.
+    when:
+      action_type: [reply, forward]
+      recipient: external
+      flags_all: [untrusted_recipient]
+    verdict: ask
+    reason: >-
+      Check this carefully: the agent wants to {what} to {recipients}, but that address was taken from the
+      text of email {untrusted_email} (from {untrusted_sender}), not from you.
+
+  - id: ask-bulk-external-forward
+    description: Forwarding several different emails to the same outside address looks like data being collected.
+    when:
+      action_type: [forward]
+      recipient: external
+      flags_all: [bulk]
+    verdict: ask
+    reason: This is forward number {bulk_count} of different emails to the same outside address ({recipients}).
 
   - id: internal-send-allowed
     description: Replying or forwarding to a colleague stays inside the company.

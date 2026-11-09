@@ -57,13 +57,13 @@ def explain(entry: AuditEntry) -> str:
     text = f"Agent tried: {what}. Rule '{d.rule_id}' said {d.verdict.value.upper()}: {d.reason}"
     extra = [h for h in d.hits if h.rule_id != d.rule_id]
     if extra:
-        text += " Also matched: " + "; ".join(f"{h.rule_id} ({h.reason})" for h in extra) + "."
+        text += " Also matched: " + ", ".join(f"{h.rule_id} ({h.verdict.value})" for h in extra) + "."
     if d.flags:
         text += f" Flags: {', '.join(d.flags)}."
     if entry.approval in ("approved", "rejected"):
         text += f" Human {entry.approval} it."
     text += f" Outcome: {entry.outcome.value}."
-    if entry.detail:
+    if entry.detail and d.reason not in entry.detail:  # a block's detail repeats the reason: say it once
         text += f" ({entry.detail})"
     if a.rationale:
         text += f" Agent's reason: \"{a.rationale}\""
