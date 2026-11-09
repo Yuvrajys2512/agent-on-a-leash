@@ -1,5 +1,5 @@
 from app.contracts import is_internal
-from app.mailbox.show import load
+from app.mailbox import load
 
 
 def test_inbox_has_the_planned_mix():
