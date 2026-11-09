@@ -31,7 +31,7 @@ async def test_internal_forward_runs_without_asking(tmp_path):
 
 async def test_external_forward_waits_and_reject_leaves_outbox_empty(tmp_path):
     mb, audit, approvals, gate = build(tmp_path)
-    a = ProposedAction(type=T.FORWARD, email_id="e01", params={"to": ["collect@evil-payments.example"]})
+    a = ProposedAction(type=T.FORWARD, email_id="e02", params={"to": ["partner@outside.example"]})
     task = asyncio.create_task(gate(a))
     for _ in range(100):
         if approvals.pending:

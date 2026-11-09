@@ -72,8 +72,8 @@ def test_reply_to_benign_partner_email_is_not_blocked(engine, mb):
     assert not any(f.startswith("injection_suspected") for f in d.flags)
 
 
-def test_forward_invoice_to_partner_asks_but_does_not_block(engine, mb):
-    d = engine.evaluate(forward("e01", ["jussi.laine@turkubio.example"], CLEAN), mb)
+def test_forward_invoice_without_personal_data_to_partner_asks_but_does_not_block(engine, mb):
+    d = engine.evaluate(forward("e02", ["jussi.laine@turkubio.example"], CLEAN), mb)
     assert d.verdict == V.ASK
 
 

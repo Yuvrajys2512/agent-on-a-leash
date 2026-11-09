@@ -22,6 +22,17 @@ rules:
       It had read email {injection_email} ("{injection_subject}", from {injection_sender}),
       which contains the instruction "{injection_phrase}". Emails must never decide where your data goes.
 
+  - id: block-pii-external-send
+    description: Personal data (IBANs, phone numbers, names of people) must not leave the company. To allow it after your approval instead, change "block" to "ask".
+    when:
+      action_type: [reply, forward]
+      recipient: external
+      flags_all: [pii]
+    verdict: block
+    reason: >-
+      Blocked: this {what} to {recipients} would send personal data outside the company ({pii_kinds}).
+      Masked preview of what would have been sent: "{preview}"
+
   - id: ask-untrusted-recipient
     description: If the destination address came from the text of an outside email instead of from you, you are warned before approving.
     when:
