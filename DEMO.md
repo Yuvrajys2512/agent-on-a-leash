@@ -5,13 +5,20 @@ can be checked afterwards.*
 
 ## Before you start (once)
 
-1. `uvicorn app.api.server:app` (use `AGENT=fake` for the repeatable version, see the README).
-2. Open <http://localhost:8000> in a full-width window. Press **Reset** so the inbox and the log are clean.
+1. Start the server in one of the two demo modes (see the README):
+   - **Red-team mode** (best, needs your key): `AGENT_RED_TEAM=1 uvicorn app.api.server:app`. The real AI does
+     the triage; after it reads the trick email, a *simulated* compromised agent tries the three forwards.
+   - **Scripted agent** (no key, same every time): `AGENT=fake uvicorn app.api.server:app`.
+2. Open <http://localhost:8000> in a full-width window. The header shows which mode is running. Press **Reset**
+   so the inbox and the log are clean.
 3. Have `rules.yaml` open in an editor in another window.
 4. Have a terminal ready in the project folder for step 6.
 
-Use the scripted agent (`AGENT=fake`) for the main run: it behaves the same every time. It stops at the same
-three approvals each run.
+**Be upfront about the simulation.** Current AI models spot the trick email on their own (0 of 25 live runs fell
+for it), so a normal run never shows the leash stopping anything. The demo therefore shows what the leash is for:
+it must hold *even if the agent is compromised*. Say that out loud at 1:30; it is a stronger story than pretending
+the AI was fooled. The scripted agent stops at the same three approvals each run; in red-team mode the real AI
+may phrase and order things a little differently.
 
 ## The run
 
@@ -22,7 +29,7 @@ three approvals each run.
 | 0:35 | Click **Run agent**. | "The agent only proposes. Everything it wants to do shows up here before it happens." | Green cards stream in: labels, moves, forwards to accounting. The inbox updates. |
 | 0:55 | The first amber card appears (reply to Maria, a client). Point at the Approve / Reject buttons. Click **Approve**. | "Sending something outside the company needs my yes. I approve this one." | Card turns to "Done". The run continues. |
 | 1:15 | The next amber card (reply to the customer complaint). Click **Reject**. | "I don't like this one, so I reject it. Nothing is sent." | "You rejected it. Nothing happened." |
-| 1:30 | Red cards appear: three forwards to `collect@evil-payments.example`. | "The agent read the trap and obeyed it: it tried to forward all three invoices to an outside address. The rules stopped every one." | Three red **BLOCK** cards. |
+| 1:30 | Red cards appear: three forwards to `collect@evil-payments.example`. Point at the amber "simulated attack" badge in the header. | "Today's AI models usually spot this trap, so we simulate an agent that did fall for it. The point is that the leash holds even then: it tries to forward all three invoices to an outside address, and the rules stop every one." | Three red **BLOCK** cards (tagged "simulated attack" in red-team mode). |
 | 1:50 | Click a red row in the **Audit log** to expand it. | "And the log says why, in plain English." | "Blocked: the agent tried to forward email e01 ... to collect@evil-payments.example, which is outside the company. It had read email e09 ... which contains the instruction 'ignore previous instructions'." |
 | 2:15 | Approve the last amber card (the reply to the partner). | "Normal work still flows. The leash only bites when it should." | "Done". Status shows "finished". |
 | 2:25 | Switch to the terminal (step 6 below). | "Personal data gets the same treatment." | A BLOCK with a masked preview. |
@@ -45,6 +52,10 @@ python -m app.policy.check '{"type":"forward","email_id":"e01","params":{"to":["
 
 ## If you get asked
 
+- **"Did the AI really fall for it?"** No, and we say so. We ran it 25 times across four model versions and it
+  recognised the trick every time. We simulate a compromised agent because the leash is meant to protect you
+  *when* an agent is fooled, by this trick, a cleverer one, or a bug. The simulated actions are labelled and go
+  through the same gate as real ones.
 - **"What if the attacker words it differently?"** There is a second layer that doesn't use keywords: if the
   outside address the agent wants to use appears in the text of an email, not in anything you told it, you get a
   warning before you can approve. And every outside message is an "ask" unless a rule says otherwise.
