@@ -26,6 +26,9 @@ class _JsonMailbox:
             raw = raw.get("emails", [])
         self.emails = {e.id: e for e in (Email.model_validate(x) for x in raw)}
 
+    def list(self) -> list[Email]:  # the engine uses this to learn the names of known people
+        return list(self.emails.values())
+
     def get(self, email_id: str) -> Email:
         return self.emails[email_id]
 
