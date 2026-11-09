@@ -60,3 +60,8 @@ class ApprovalStore:
             return False
         item[2].set_result(approve)
         return True
+
+    def reject_all(self) -> int:
+        """Reject everything still waiting (used on reset). Returns how many."""
+        ids = list(self._pending)
+        return sum(self.resolve(i, False) for i in ids)

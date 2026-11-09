@@ -5,6 +5,7 @@ Append-only JSONL: one AuditEntry per line, never rewritten.
 from __future__ import annotations
 
 import threading
+from datetime import datetime
 from pathlib import Path
 
 from app.contracts import ActionType, AuditEntry, is_internal
@@ -21,6 +22,16 @@ class AuditLog:
             self.path.parent.mkdir(parents=True, exist_ok=True)
             with self.path.open("a", encoding="utf-8") as f:  # "a" = append only
                 f.write(line + "\n")
+
+    def rotate(self) -> Path | None:
+        """Start a fresh log for a new demo run. The old file is kept (renamed), never deleted."""
+        with self._lock:
+            if not self.path.exists():
+                return None
+            stamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
+            target = self.path.with_name(f"{self.path.stem}-{stamp}{self.path.suffix}")
+            self.path.rename(target)
+            return target
 
     def read_all(self) -> list[AuditEntry]:
         if not self.path.exists():
