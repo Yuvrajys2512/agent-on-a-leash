@@ -162,6 +162,13 @@ The project plan and how the work was split is in [PLAN.md](PLAN.md).
   second layer (where did the recipient address come from?) that does not depend on keywords. They are not a
   complete defence: a different phrasing may slip past the keyword layer, which is why every outside message
   still needs your approval unless a rule says otherwise.
+- The keyword layer is tested against about 25 ways of wording the trick (`tests/test_policy_adversarial.py`):
+  odd spacing, hidden characters, look-alike letters, leetspeak, letters spaced apart, Finnish/German/French/
+  Spanish/Swedish, base64, hidden HTML comments, and addresses written "x at y dot z". Text that is clearly
+  aimed at an AI is blocked. Text a human could plausibly have written ("please CC ... on every invoice", "new
+  instructions from management") is **not** blocked, because that would also block honest suppliers: it goes to
+  you as an ask, with a warning that names the email and the address. One known gap: letters spaced apart by
+  single spaces with no visible word boundary slip past the keyword layer, but still reach you as an ask.
 - Names are recognised only for people who appear in the mailbox with a `first.last@` address.
 - It works on a mock mailbox only. Connecting it to real email would need real authentication, real sending,
   and much more testing.
