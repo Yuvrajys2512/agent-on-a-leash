@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent on a Leash</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <h1>Agent on a Leash</h1>
+  <span id="status" class="pill">idle</span>
+  <span class="spacer"></span>
+  <button id="rules-btn" class="ghost">Rules</button>
+  <button id="reset-btn" class="ghost">Reset</button>
+  <button id="run-btn" class="primary">Run agent</button>
+</header>
+<div id="banner" hidden></div>
+<main>
+  <section>
+    <h2>Inbox <small id="inbox-count"></small></h2>
+    <div id="inbox" class="scroll"></div>
+  </section>
+  <section>
+    <h2>Live actions <small>each one is shown before it happens</small></h2>
+    <div id="feed" class="scroll"><p class="empty">Press <b>Run agent</b>. Every action the agent wants to take appears here first.</p></div>
+  </section>
+  <section>
+    <h2>Audit log <small id="log-count"></small></h2>
+    <div id="log" class="scroll"><p class="empty">Nothing logged yet.</p></div>
+  </section>
+</main>
+<aside id="rules-panel" hidden>
+  <div class="rules-head"><h2>Rules the agent must follow</h2><button id="rules-close" class="ghost">Close</button></div>
+  <p class="muted">The first rule that matches decides. If no rule matches, you are asked.</p>
+  <div id="rules"></div>
+</aside>
+<script src="app.js"></script>
+</body>
+</html>
