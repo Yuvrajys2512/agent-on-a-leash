@@ -54,11 +54,21 @@ class Verdict(str, Enum):
     BLOCK = "block"
 
 
+class RuleHit(BaseModel):
+    rule_id: str
+    verdict: Verdict
+    reason: str
+
+
 class Decision(BaseModel):
     verdict: Verdict
-    rule_id: str
+    rule_id: str  # the rule that decided
     reason: str
-    flags: list[str] = Field(default_factory=list)  # e.g. "external_recipient", "tainted", "pii:iban"
+    # e.g. "external_recipient", "tainted", "pii:iban", "bulk", "lookalike_sender"
+    flags: list[str] = Field(default_factory=list)
+    # PROPOSED (A, to agree with B): every rule that matched, so the log can give all reasons,
+    # not only the first. Example: a forward that is bulk AND external AND carries an IBAN.
+    hits: list[RuleHit] = Field(default_factory=list)
 
 
 class Outcome(str, Enum):
@@ -86,5 +96,8 @@ class AuditEntry(BaseModel):
 Gate = Callable[[ProposedAction], Awaitable[GateResult]]
 # Person A implements:  async run_agent(mailbox, gate, task: str) -> None
 # Person B implements:  PolicyEngine.evaluate(action, mailbox) -> Decision
+#                       (PROPOSED: evaluate(action, mailbox, history: list[AuditEntry]) so rules can see
+#                        earlier actions in the same run; otherwise "forward all invoices" slips
+#                        through as three separate single forwards)
 #                       AuditLog.record(entry), AuditLog.read_all() -> list[AuditEntry]
 #                       make_gate(policy, mailbox, audit, approvals) -> Gate
