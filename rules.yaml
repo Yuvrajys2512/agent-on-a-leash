@@ -11,7 +11,7 @@ rules:
     reason: Organising emails inside the mailbox is safe.
 
   - id: block-injected-external-send
-    description: An email must never be able to decide where your data goes. If an email the agent read contains instructions aimed at an AI, nothing may be sent outside the company.
+    description: An email must never be able to decide where your data goes. If an email that can steer a send contains instructions aimed at an AI, nothing may be sent outside the company. For a forward that is any email the agent read; for a reply it is the email being answered.
     when:
       action_type: [reply, forward]
       recipient: external

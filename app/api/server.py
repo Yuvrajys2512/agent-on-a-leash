@@ -1,9 +1,22 @@
-"""Real server entry point:  uvicorn app.api.server:app --reload
+"""Server entry point.
 
-Wires Person A's Mailbox and agent into the app. Until A finishes them the run ends with a run_error event.
+    uvicorn app.api.server:app                 real AI agent (needs ANTHROPIC_API_KEY in .env)
+    AGENT=fake uvicorn app.api.server:app      Person A's scripted agent: no AI, no key, same trick email
+
+PowerShell:  $env:AGENT="fake"; uvicorn app.api.server:app
 """
-from app.agent import run_agent
+import os
+
+from dotenv import load_dotenv
+
 from app.api.app import create_app
 from app.mailbox import Mailbox
 
-app = create_app(Mailbox(), run_agent)
+load_dotenv()
+
+if os.getenv("AGENT", "real").lower() == "fake":
+    from app.agent.scripted import run_fake_agent as agent
+else:
+    from app.agent import run_agent as agent
+
+app = create_app(Mailbox(), agent)
