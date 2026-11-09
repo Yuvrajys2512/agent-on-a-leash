@@ -140,6 +140,6 @@ def test_config_tells_the_ui_which_agent_is_running(tmp_path, mb):
     red = create_app(mb, fake_agent, audit_path=str(tmp_path / "b.jsonl"), ui_dir="nope",
                      info={"agent": "real", "red_team": True})
     with TestClient(default) as c:
-        assert c.get("/config").json() == {"agent": "real", "red_team": False}
+        assert c.get("/config").json() == {"agent": "real", "red_team": False, "company_domain": "acme.example"}
     with TestClient(red) as c:
-        assert c.get("/config").json() == {"agent": "real", "red_team": True}
+        assert c.get("/config").json() == {"agent": "real", "red_team": True, "company_domain": "acme.example"}
