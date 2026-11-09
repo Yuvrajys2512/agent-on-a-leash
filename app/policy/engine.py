@@ -1,16 +1,42 @@
-"""Policy engine (Phase 1.B2). Owned by Person B.
+"""Policy engine (Phase 1.B2, extended in Phase 4). Owned by Person B.
 
-First matching rule wins. If nothing matches, or anything goes wrong, the answer is ASK (fail safe).
-`history` (earlier audit entries of the same run) is accepted now and used from Phase 4 on.
+First matching rule wins, every matching rule is reported in Decision.hits.
+If nothing matches, or anything goes wrong, the answer is ASK (fail safe).
+
+Flags computed for each action (rules match on them with `flags_all`):
+  internal_recipient / external_recipient   where the message would go (any external address = external)
+  tainted                                   the agent has read mail from outside the company
+  injection_suspected:<email id>            an email it read contains instructions aimed at an AI
+  untrusted_recipient:<email id>            the external recipient's address came from that email's text
+  bulk                                      3rd+ forward of different emails to the same external address
+A rule flag without a colon (e.g. `injection_suspected`) matches any flag of that family.
+
+Rule reasons may contain {placeholders} (see `details` below); they are filled in per action.
 """
 from __future__ import annotations
 
 from app.contracts import (
-    ActionType, AuditEntry, Decision, MailboxProtocol, ProposedAction, RuleHit, Verdict, is_internal,
+    ActionType, AuditEntry, Decision, Email, MailboxProtocol, ProposedAction, RuleHit, Verdict, is_internal,
 )
+from app.policy.injection import addresses_in, scan, verdict as injection_verdict
 from app.policy.rules import Rule, load_rules
 
 DEFAULT_RULE_ID = "default-ask"
+BULK_THRESHOLD = 3  # this forward + 2 earlier ones to the same external address
+
+
+class _Safe(dict):
+    def __missing__(self, key: str) -> str:  # an unknown {placeholder} stays visible instead of crashing
+        return "{" + key + "}"
+
+
+def _has(flag: str, flags: list[str]) -> bool:
+    return flag in flags or any(f.startswith(flag + ":") for f in flags)
+
+
+def _recipients_from_params(action: ProposedAction) -> list[str]:
+    to = action.params.get("to") or []
+    return [to] if isinstance(to, str) else list(to)
 
 
 class PolicyEngine:
@@ -21,22 +47,62 @@ class PolicyEngine:
     def recipients_of(self, action: ProposedAction, mailbox: MailboxProtocol) -> list[str] | None:
         """Everyone who would receive this. None if the action sends nothing."""
         if action.type == ActionType.FORWARD:
-            to = action.params.get("to") or []
-            return [to] if isinstance(to, str) else list(to)
+            return _recipients_from_params(action)
         if action.type == ActionType.REPLY:
             return [mailbox.get(action.email_id).sender]
         return None
 
-    def compute_flags(self, action: ProposedAction, mailbox: MailboxProtocol) -> list[str]:
+    def analyze(self, action: ProposedAction, mailbox: MailboxProtocol,
+                history: list[AuditEntry] | None = None) -> tuple[list[str], dict[str, str]]:
+        """Returns (flags, details). `details` fills the {placeholders} in rule reasons."""
         flags: list[str] = []
+        subject = mailbox.get(action.email_id).subject
+        details: dict[str, str] = {"what": f"{action.type.value} email {action.email_id} (\"{subject}\")"}
+
         recipients = self.recipients_of(action, mailbox)
+        external: list[str] = []
         if recipients is not None:
             # No recipients at all counts as external (fail safe). ONE external recipient makes it external.
             if recipients and all(is_internal(r) for r in recipients):
                 flags.append("internal_recipient")
             else:
                 flags.append("external_recipient")
-        return flags
+            external = [r.lower() for r in recipients if not is_internal(r)]
+            details["recipients"] = ", ".join(recipients) or "(nobody)"
+
+        # Everything the agent has read, plus the email it is acting on.
+        ids = list(dict.fromkeys([*action.context_email_ids, action.email_id]))
+        context: list[Email] = [mailbox.get(i) for i in ids]  # unknown id -> exception -> ASK (fail safe)
+        outside = [e for e in context if not is_internal(e.sender)]
+        if outside:
+            flags.append("tainted")
+            details["tainted_by"] = ", ".join(e.id for e in outside)
+
+        for e in context:
+            hit = injection_verdict(scan(f"{e.subject}\n{e.body}"))
+            if hit:
+                flags.append(f"injection_suspected:{e.id}")
+                details.setdefault("injection_email", e.id)
+                details.setdefault("injection_subject", e.subject)
+                details.setdefault("injection_sender", e.sender)
+                details.setdefault("injection_phrase", hit.phrase)
+
+        # Did the destination address come from the text of an outside email instead of from the user?
+        for e in outside:
+            mentioned = addresses_in(f"{e.subject}\n{e.body}") - {e.sender.lower()}
+            if any(r in mentioned for r in external):
+                flags.append(f"untrusted_recipient:{e.id}")
+                details.setdefault("untrusted_email", e.id)
+                details.setdefault("untrusted_sender", e.sender)
+
+        if action.type == ActionType.FORWARD and external:
+            earlier = {h.action.email_id for h in (history or [])
+                       if h.action.type == ActionType.FORWARD and h.action.email_id != action.email_id
+                       and set(map(str.lower, _recipients_from_params(h.action))) & set(external)}
+            if len(earlier) + 1 >= BULK_THRESHOLD:
+                flags.append("bulk")
+                details["bulk_count"] = str(len(earlier) + 1)
+        return flags, details
 
     @staticmethod
     def _matches(rule: Rule, action: ProposedAction, flags: list[str]) -> bool:
@@ -47,17 +113,24 @@ class PolicyEngine:
             return False
         if w.recipient == "external" and "external_recipient" not in flags:
             return False
-        return all(f in flags for f in w.flags_all)
+        return all(_has(f, flags) for f in w.flags_all)
+
+    @staticmethod
+    def _reason(rule: Rule, details: dict[str, str]) -> str:
+        try:
+            return rule.reason.format_map(_Safe(details))
+        except (ValueError, IndexError, AttributeError):  # stray braces in a hand-written rule
+            return rule.reason
 
     def evaluate(self, action: ProposedAction, mailbox: MailboxProtocol,
                  history: list[AuditEntry] | None = None) -> Decision:
         try:
-            flags = self.compute_flags(action, mailbox)
+            flags, details = self.analyze(action, mailbox, history)
         except Exception as e:  # e.g. unknown email id -> never allow silently
             reason = f"Could not evaluate action safely ({e}); asking the human."
             return Decision(verdict=Verdict.ASK, rule_id="evaluation-error", reason=reason, flags=["error"],
                             hits=[RuleHit(rule_id="evaluation-error", verdict=Verdict.ASK, reason=reason)])
-        hits = [RuleHit(rule_id=r.id, verdict=r.verdict, reason=r.reason)
+        hits = [RuleHit(rule_id=r.id, verdict=r.verdict, reason=self._reason(r, details))
                 for r in self.rules if self._matches(r, action, flags)]
         if hits:
             first = hits[0]  # first match decides; the rest are kept so the log can show every reason

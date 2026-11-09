@@ -47,6 +47,11 @@ async def test_bad_params_become_failed_not_crash(tmp_path):
     mb, audit, _, gate = build(tmp_path)
     r = await gate(ProposedAction(type=T.LABEL, email_id="e01", params={}))
     assert r.outcome == Outcome.FAILED and "label" in r.detail
+    assert len(audit.read_all()) == 1
+
+
+async def test_unknown_email_fails_safe_to_human_then_times_out(tmp_path):
+    mb, audit, _, gate = build(tmp_path, timeout=0.05)
     r = await gate(ProposedAction(type=T.LABEL, email_id="e99", params={"label": "x"}))
-    assert r.outcome == Outcome.FAILED
-    assert len(audit.read_all()) == 2
+    assert r.decision.rule_id == "evaluation-error" and r.outcome == Outcome.REJECTED_BY_HUMAN
+    assert len(audit.read_all()) == 1
