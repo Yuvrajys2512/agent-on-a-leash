@@ -122,6 +122,28 @@ python -m app.policy.check '{"type":"forward","email_id":"e06","params":{"to":["
 **Want to approve personal-data sends instead of blocking them?** In `rules.yaml`, change `verdict: block` to
 `verdict: ask` on `block-pii-external-send`.
 
+### Rules in plain English
+
+You can add your own rules by describing them ("never forward invoices outside the company"). An AI turns the
+sentence into proposed rules, and then **you stay in control**:
+
+1. `POST /rules/compile` only **previews**: it shows the proposed rules as YAML, with warnings. Nothing changes.
+2. Only when you confirm (`POST /rules/activate/{proposal_id}`) are exactly those previewed rules saved, to
+   `rules.user.yaml`. They apply from the next run, and each change is recorded in `rules.user.history.jsonl`.
+
+What keeps this safe, even though an AI writes the rules:
+
+- **They can only make the agent stricter.** The core rules decide first; a plain-English rule replaces that answer
+  only if it is stricter (allow, then ask, then block). It can never loosen a core ask or block.
+- **No `allow` rules.** An allow rule could loosen the safe default ("anything not covered asks you"), so it is refused.
+- **Strict checking.** Unknown fields, unknown flags (a rule that could never fire), too many rules or overlong text
+  are refused with a message, and ids are renamed so they can never clash with core rules.
+- **Reset** sets the plain-English rules aside (renamed, not deleted) so the next demo starts clean.
+
+Rules can test the action type, internal/external recipient, `recipient_domain`, `sender_domain`, `subject_contains`
+and any flag from the table above. `rules_format_help()` in `app/policy/rules.py` is the format description given
+to the AI.
+
 ## The audit log
 
 Every action, whatever happens to it, becomes one line in `audit.jsonl` (append-only JSON lines): the action,
@@ -137,7 +159,8 @@ and a human approval that times out (default 5 minutes) both count as "not execu
 | `GET /pending`, `POST /approve/{id}`, `POST /reject/{id}` | The human's decisions. |
 | `GET /log` | Audit entries with their plain-English explanation. |
 | `GET /rules`, `GET /inbox`, `GET /status` | Data for the UI. |
-| `POST /reset` | Cancel the run, reject anything pending, reset the mailbox, start a new log. |
+| `POST /rules/compile`, `POST /rules/activate/{id}`, `DELETE /rules/user/{id}` | Plain-English rules: preview, confirm, remove (see above). |
+| `POST /reset` | Cancel the run, reject anything pending, reset the mailbox, set plain-English rules aside, start a new log. |
 
 Interactive docs: <http://localhost:8000/docs>.
 

@@ -15,15 +15,22 @@ Flags computed for each action (rules match on them with `flags_all`):
 A rule flag without a colon (e.g. `injection_suspected`) matches any flag of that family.
 
 Rule reasons may contain {placeholders} (see `details` below); they are filled in per action.
+
+User rules (rules written in plain English, see user_rules.py) are loaded from a second file. They are
+TIGHTEN-ONLY: the core answer is computed first, and a matching user rule replaces it only if it is stricter
+(allow < ask < block). They can never loosen a core ask or block.
 """
 from __future__ import annotations
+
+from dataclasses import dataclass, field
+from pathlib import Path
 
 from app.contracts import (
     ActionType, AuditEntry, Decision, Email, MailboxProtocol, ProposedAction, RuleHit, Verdict, is_internal,
 )
 from app.policy.injection import addresses_in, scan, verdict as injection_verdict
 from app.policy.pii import KIND_LABEL, find_pii, names_from_addresses, redact
-from app.policy.rules import Rule, load_rules
+from app.policy.rules import Rule, RulesError, load_rules
 
 DEFAULT_RULE_ID = "default-ask"
 BULK_THRESHOLD = 3  # this forward + 2 earlier ones to the same external address
@@ -48,10 +55,37 @@ def _clip(text: str, n: int = 220) -> str:
     return text if len(text) <= n else text[:n] + "..."
 
 
+@dataclass
+class Facts:
+    """Plain facts about an action that rules can test with `recipient_domain`, `sender_domain`, `subject_contains`."""
+    recipient_domains: set[str] = field(default_factory=set)
+    sender_domain: str = ""
+    subject: str = ""  # lower-case
+
+
+RANK = {Verdict.ALLOW: 0, Verdict.ASK: 1, Verdict.BLOCK: 2}
+
+
+def _domain_matches(domain: str, wanted: list[str]) -> bool:
+    return any(domain == w or domain.endswith("." + w) for w in wanted)
+
+
 class PolicyEngine:
-    def __init__(self, rules_path: str = "rules.yaml") -> None:
+    """Core rules decide first (first match wins). Optional user rules (written in plain English, checked and
+    confirmed by a human) can only make the answer STRICTER: allow -> ask -> block, never the other way round."""
+
+    def __init__(self, rules_path: str = "rules.yaml", user_rules_path: str | None = None) -> None:
         self.rules_path = rules_path
         self.rules: list[Rule] = load_rules(rules_path).rules
+        self.user_rules: list[Rule] = []
+        if user_rules_path and Path(user_rules_path).exists():
+            self.user_rules = load_rules(user_rules_path).rules
+            loosening = [r.id for r in self.user_rules if r.verdict == Verdict.ALLOW]
+            if loosening:  # a hand-edited file must not be able to loosen anything either
+                raise RulesError(f"User rules may only ask or block, but these allow: {', '.join(loosening)}")
+            clash = {r.id for r in self.user_rules} & {r.id for r in self.rules}
+            if clash:
+                raise RulesError(f"User rule ids clash with core rule ids: {', '.join(sorted(clash))}")
 
     def recipients_of(self, action: ProposedAction, mailbox: MailboxProtocol) -> list[str] | None:
         """Everyone who would receive this. None if the action sends nothing."""
@@ -77,13 +111,17 @@ class PolicyEngine:
         return names_from_addresses(a for e in emails for a in [e.sender, *e.to])
 
     def analyze(self, action: ProposedAction, mailbox: MailboxProtocol,
-                history: list[AuditEntry] | None = None) -> tuple[list[str], dict[str, str]]:
-        """Returns (flags, details). `details` fills the {placeholders} in rule reasons."""
+                history: list[AuditEntry] | None = None) -> tuple[list[str], dict[str, str], Facts]:
+        """Returns (flags, details, facts). `details` fills the {placeholders} in rule reasons."""
         flags: list[str] = []
-        subject = mailbox.get(action.email_id).subject
+        acted_on = mailbox.get(action.email_id)
+        subject = acted_on.subject
         details: dict[str, str] = {"what": f"{action.type.value} email {action.email_id} (\"{subject}\")"}
+        facts = Facts(sender_domain=acted_on.sender.strip().lower().rsplit("@", 1)[-1], subject=subject.lower())
 
         recipients = self.recipients_of(action, mailbox)
+        if recipients is not None:
+            facts.recipient_domains = {r.strip().lower().rsplit("@", 1)[-1] for r in recipients}
         external: list[str] = []
         if recipients is not None:
             # No recipients at all counts as external (fail safe). ONE external recipient makes it external.
@@ -148,16 +186,23 @@ class PolicyEngine:
             if len(earlier) + 1 >= BULK_THRESHOLD:
                 flags.append("bulk")
                 details["bulk_count"] = str(len(earlier) + 1)
-        return flags, details
+        return flags, details, facts
 
     @staticmethod
-    def _matches(rule: Rule, action: ProposedAction, flags: list[str]) -> bool:
+    def _matches(rule: Rule, action: ProposedAction, flags: list[str], facts: Facts) -> bool:
         w = rule.when
         if w.action_type and action.type not in w.action_type:
             return False
         if w.recipient == "internal" and "internal_recipient" not in flags:
             return False
         if w.recipient == "external" and "external_recipient" not in flags:
+            return False
+        if w.recipient_domain and not any(_domain_matches(d, [x.lower() for x in w.recipient_domain])
+                                          for d in facts.recipient_domains):
+            return False
+        if w.sender_domain and not _domain_matches(facts.sender_domain, [x.lower() for x in w.sender_domain]):
+            return False
+        if w.subject_contains and not any(word.lower() in facts.subject for word in w.subject_contains):
             return False
         return all(_has(f, flags) for f in w.flags_all)
 
@@ -171,16 +216,26 @@ class PolicyEngine:
     def evaluate(self, action: ProposedAction, mailbox: MailboxProtocol,
                  history: list[AuditEntry] | None = None) -> Decision:
         try:
-            flags, details = self.analyze(action, mailbox, history)
+            flags, details, facts = self.analyze(action, mailbox, history)
         except Exception as e:  # e.g. unknown email id -> never allow silently
             reason = f"Could not evaluate action safely ({e}); asking the human."
             return Decision(verdict=Verdict.ASK, rule_id="evaluation-error", reason=reason, flags=["error"],
                             hits=[RuleHit(rule_id="evaluation-error", verdict=Verdict.ASK, reason=reason)])
-        hits = [RuleHit(rule_id=r.id, verdict=r.verdict, reason=self._reason(r, details))
-                for r in self.rules if self._matches(r, action, flags)]
-        if hits:
-            first = hits[0]  # first match decides; the rest are kept so the log can show every reason
-            return Decision(verdict=first.verdict, rule_id=first.rule_id, reason=first.reason, flags=flags, hits=hits)
-        reason = "No rule covers this action, so the human is asked."
-        return Decision(verdict=Verdict.ASK, rule_id=DEFAULT_RULE_ID, reason=reason, flags=flags,
-                        hits=[RuleHit(rule_id=DEFAULT_RULE_ID, verdict=Verdict.ASK, reason=reason)])
+
+        def hit(r: Rule) -> RuleHit:
+            return RuleHit(rule_id=r.id, verdict=r.verdict, reason=self._reason(r, details))
+
+        core_hits = [hit(r) for r in self.rules if self._matches(r, action, flags, facts)]
+        if core_hits:
+            decided = core_hits[0]  # first match decides; the rest are kept so the log can show every reason
+        else:
+            reason = "No rule covers this action, so the human is asked."
+            decided = RuleHit(rule_id=DEFAULT_RULE_ID, verdict=Verdict.ASK, reason=reason)
+            core_hits = [decided]
+        # User rules can only tighten: the strictest matching one replaces the core answer if it is stricter.
+        user_hits = [hit(r) for r in self.user_rules if self._matches(r, action, flags, facts)]
+        strictest = max(user_hits, key=lambda h: RANK[h.verdict], default=None)  # first one wins a tie
+        if strictest and RANK[strictest.verdict] > RANK[decided.verdict]:
+            decided = strictest
+        hits = [decided] + [h for h in core_hits + user_hits if h is not decided]
+        return Decision(verdict=decided.verdict, rule_id=decided.rule_id, reason=decided.reason, flags=flags, hits=hits)
