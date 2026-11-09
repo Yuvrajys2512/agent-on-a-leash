@@ -18,7 +18,7 @@ from pydantic import BaseModel
 from app.api.hub import Hub
 from app.approvals import ApprovalStore
 from app.audit.log import AuditLog, explain
-from app.contracts import Gate, MailboxProtocol
+from app.contracts import COMPANY_DOMAIN, Gate, MailboxProtocol
 from app.gate import make_gate
 from app.policy.engine import PolicyEngine
 from app.policy.rules import RulesError, load_rules
@@ -91,7 +91,7 @@ def create_app(
 
     @app.get("/config")
     async def config():
-        return {"agent": "real", "red_team": False, **(info or {})}
+        return {"agent": "real", "red_team": False, "company_domain": COMPANY_DOMAIN, **(info or {})}
 
     @app.get("/status")
     async def status():
