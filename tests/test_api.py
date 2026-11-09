@@ -124,3 +124,12 @@ async def test_hub_replays_history_then_streams_live():
     assert (await gen.__anext__()).startswith(": keepalive")  # idle heartbeat
     await gen.aclose()
     assert not hub._queues
+
+
+def test_ui_is_served(tmp_path, mb):
+    app = create_app(mb, fake_agent, audit_path=str(tmp_path / "a.jsonl"), ui_dir="ui")
+    with TestClient(app) as c:
+        r = c.get("/")
+        assert r.status_code == 200 and "Agent on a Leash" in r.text
+        assert c.get("/app.js").status_code == 200 and c.get("/style.css").status_code == 200
+        assert c.get("/inbox").status_code == 200  # API routes still win over the static mount

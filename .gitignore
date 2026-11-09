@@ -1,5 +1,4 @@
 .env
-audit.jsonl
 __pycache__/
 *.pyc
 .venv/
@@ -7,3 +6,4 @@ venv/
 .pytest_cache/
 .vscode/
 .idea/
+audit*.jsonl
