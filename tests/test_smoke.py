@@ -8,7 +8,7 @@ def test_contracts_and_stubs_import():
     assert a.id and a.type is ActionType.FORWARD
     assert Verdict("block") is Verdict.BLOCK
     assert is_internal("ann@ACME.example") and not is_internal("x@acme.example.evil.com")
-    assert Mailbox().list() == []
+    assert len(Mailbox().list()) == 10
     assert callable(run_agent)
 
 
