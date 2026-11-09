@@ -1,2 +1,26 @@
-# Owned by Person B. Filled in Phase 1.
-rules: []
+# Rules the agent must follow. First matching rule wins.
+# verdict: allow = do it, ask = needs human approval, block = never.
+# If no rule matches, the answer is always "ask".
+rules:
+  - id: organise-allowed
+    description: Labelling and moving emails only changes the mailbox, nothing leaves the company.
+    when:
+      action_type: [label, move]
+    verdict: allow
+    reason: Organising emails inside the mailbox is safe.
+
+  - id: internal-send-allowed
+    description: Replying or forwarding to a colleague stays inside the company.
+    when:
+      action_type: [reply, forward]
+      recipient: internal
+    verdict: allow
+    reason: Recipient is inside the company.
+
+  - id: external-send-ask
+    description: Anything sent outside the company needs your approval.
+    when:
+      action_type: [reply, forward]
+      recipient: external
+    verdict: ask
+    reason: Recipient is outside the company, so you must approve it.
