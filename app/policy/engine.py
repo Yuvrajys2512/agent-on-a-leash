@@ -130,7 +130,11 @@ class PolicyEngine:
                 details.setdefault("injection_phrase", hit.phrase)
 
         # Did the destination address come from the text of an outside email instead of from the user?
-        for e in outside:
+        # Checked against EVERY outside email in the mailbox, not just the ones the agent says it read,
+        # so an agent that forgets (or hides) what it read does not blind this check.
+        lister = getattr(mailbox, "list", None)
+        pool = lister() if callable(lister) else context
+        for e in (x for x in pool if not is_internal(x.sender)):
             mentioned = addresses_in(f"{e.subject}\n{e.body}") - {e.sender.lower()}
             if any(r in mentioned for r in external):
                 flags.append(f"untrusted_recipient:{e.id}")
