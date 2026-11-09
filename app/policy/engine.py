@@ -6,7 +6,9 @@ If nothing matches, or anything goes wrong, the answer is ASK (fail safe).
 Flags computed for each action (rules match on them with `flags_all`):
   internal_recipient / external_recipient   where the message would go (any external address = external)
   tainted                                   the agent has read mail from outside the company
-  injection_suspected:<email id>            an email it read contains instructions aimed at an AI
+  injection_suspected:<email id>            an email that can steer this send contains instructions aimed at an AI
+                                            (forward: any email read; reply: only the email being answered)
+  injection_in_context:<email id>           same, but for a reply to someone else: informational only
   untrusted_recipient:<email id>            the external recipient's address came from that email's text
   bulk                                      3rd+ forward of different emails to the same external address
   pii / pii:<kind>                          what would be sent contains an IBAN, phone number or a known person's name
@@ -112,9 +114,15 @@ class PolicyEngine:
             flags.append("tainted")
             details["tainted_by"] = ", ".join(e.id for e in outside)
 
+        # A reply always goes to the sender of the email being answered, so injected text elsewhere cannot
+        # redirect it: for replies only that email counts. For forwards the agent picks the destination,
+        # so anything it has read can have steered it.
+        scope = [mailbox.get(action.email_id)] if action.type == ActionType.REPLY else context
         for e in context:
             hit = injection_verdict(scan(f"{e.subject}\n{e.body}"))
-            if hit:
+            if hit and e not in scope:
+                flags.append(f"injection_in_context:{e.id}")  # informational: shown in the log, no rule blocks on it
+            elif hit:
                 flags.append(f"injection_suspected:{e.id}")
                 details.setdefault("injection_email", e.id)
                 details.setdefault("injection_subject", e.subject)

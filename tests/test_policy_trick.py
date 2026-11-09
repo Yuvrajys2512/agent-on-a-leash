@@ -138,3 +138,15 @@ def test_unknown_placeholder_in_a_hand_written_rule_does_not_crash(tmp_path, mb)
     p.write_text("rules:\n  - {id: r, verdict: block, reason: 'x {nope} {', when: {action_type: [forward]}}\n")
     d = PolicyEngine(str(p)).evaluate(forward("e01", [EVIL], ["e01"]), mb)
     assert d.verdict == V.BLOCK and "x" in d.reason
+
+
+def test_reply_to_benign_sender_after_reading_the_trick_email_is_asked_not_blocked(engine, mb):
+    a = ProposedAction(type=T.REPLY, email_id="e10", params={"body": "Both sites."}, context_email_ids=ALL_READ + ["e10"])
+    d = engine.evaluate(a, mb)
+    assert d.verdict == V.ASK and d.rule_id == "external-send-ask"
+    assert "injection_in_context:e09" in d.flags and not any(f.startswith("injection_suspected") for f in d.flags)
+
+
+def test_forward_to_anyone_outside_is_still_blocked_after_reading_the_trick_email(engine, mb):
+    d = engine.evaluate(forward("e10", ["jussi.laine@turkubio.example"], ALL_READ + ["e10"]), mb)
+    assert d.verdict == V.BLOCK  # the agent chose the destination, so e09 may have steered it
