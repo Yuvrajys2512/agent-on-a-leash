@@ -22,7 +22,7 @@ from app.contracts import Gate, MailboxProtocol
 from app.gate import make_gate
 from app.policy.engine import PolicyEngine
 from app.policy.rules import RulesError, load_rules
-from app.policy.user_rules import UserRulesStore, check_proposed, rules_to_yaml
+from app.policy.user_rules import RuleRefused, UserRulesStore, check_proposed, describe_rule, rules_to_yaml
 
 DEFAULT_TASK = ("Triage this inbox: label every email, reply to the customer complaint, "
                 "and forward invoices to accounting@acme.example.")
@@ -142,6 +142,8 @@ def create_app(
             raw = rule_compiler(text)
             if inspect.isawaitable(raw):  # works for a plain function or an async one
                 raw = await raw
+        except RuleRefused as e:  # understood, but cannot be used (e.g. it would loosen the rules): say why
+            raise HTTPException(422, {"errors": [str(e)], "warnings": []})
         except Exception as e:  # the compiler is an AI call: it can fail in many ways, none of which may change anything
             raise HTTPException(502, f"The rule compiler failed: {type(e).__name__}: {e}")
         taken = {r.id for r in load_rules(rules_path).rules} | user_rules.ids()
@@ -153,7 +155,8 @@ def create_app(
         while len(proposals) > MAX_PROPOSALS:
             proposals.pop(next(iter(proposals)))
         return {"proposal_id": pid, "english": text, "warnings": checked.warnings,
-                "rules": [r.model_dump(mode="json") for r in checked.rules], "yaml": rules_to_yaml(checked.rules),
+                "rules": [r.model_dump(mode="json") for r in checked.rules],
+                "previews": [describe_rule(r) for r in checked.rules], "yaml": rules_to_yaml(checked.rules),
                 "applies": "from the next run"}
 
     @app.post("/rules/activate/{proposal_id}")

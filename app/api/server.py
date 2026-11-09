@@ -22,9 +22,6 @@ else:
     from app.agent import red_team_on, run_agent as agent
     info = {"agent": "real", "red_team": red_team_on()}
 
-try:  # Person A's plain-English rule compiler: used automatically once app/agent/rules_compiler.py exists
-    from app.agent.rules_compiler import compile_rules as rule_compiler
-except ImportError:
-    rule_compiler = None
+from app.api.compiler_adapter import compile_via_agent  # Person A's plain-English compiler, behind an adapter
 
-app = create_app(Mailbox(), agent, info=info, rule_compiler=rule_compiler)
+app = create_app(Mailbox(), agent, info=info, rule_compiler=compile_via_agent)

@@ -185,3 +185,29 @@ class UserRulesStore:
             self.path.rename(target)
             self._log("archived", to=target.name)
             return target
+
+
+class RuleRefused(Exception):
+    """The compiler understood the sentence but the rule cannot be used. The message is for the human."""
+
+
+_ACT = {"label": "label an email", "move": "move an email", "reply": "reply", "forward": "forward"}
+
+
+def describe_rule(rule: Rule) -> str:
+    """One plain sentence read-back of a rule, shown to the human before they confirm it."""
+    w = rule.when
+    what = " or ".join(_ACT.get(a.value, a.value) for a in w.action_type) or "do anything"
+    parts = [f"When the agent tries to {what}"]
+    if w.recipient != "any":
+        parts.append({"internal": "to someone inside the company", "external": "to someone outside the company"}[w.recipient])
+    if w.recipient_domain:
+        parts.append("to " + " or ".join(w.recipient_domain))
+    if w.sender_domain:
+        parts.append("about mail from " + " or ".join(w.sender_domain))
+    if w.subject_contains:
+        parts.append("with " + " or ".join(f"\"{s}\"" for s in w.subject_contains) + " in the subject")
+    if w.flags_all:
+        parts.append("and " + " and ".join(w.flags_all) + " is detected")
+    outcome = {Verdict.ASK: "ask you first", Verdict.BLOCK: "block it", Verdict.ALLOW: "allow it"}[rule.verdict]
+    return " ".join(parts) + f": {outcome}."
