@@ -22,4 +22,6 @@ else:
     from app.agent import red_team_on, run_agent as agent
     info = {"agent": "real", "red_team": red_team_on()}
 
-app = create_app(Mailbox(), agent, info=info)
+from app.api.compiler_adapter import compile_via_agent  # Person A's plain-English compiler, behind an adapter
+
+app = create_app(Mailbox(), agent, info=info, rule_compiler=compile_via_agent)
