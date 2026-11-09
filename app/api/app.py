@@ -37,7 +37,9 @@ def create_app(
     audit_path: str = "audit.jsonl",
     approval_timeout: float | None = 300.0,
     ui_dir: str = "ui",
+    info: dict | None = None,
 ) -> FastAPI:
+    """`info` is shown to the UI via GET /config, e.g. {"agent": "real" | "fake", "red_team": bool}."""
     app = FastAPI(title="Agent on a Leash")
     hub = Hub()
     approvals = ApprovalStore(timeout=approval_timeout)
@@ -68,6 +70,10 @@ def create_app(
         state["error"] = None
         state["task"] = asyncio.create_task(_run((req and req.task) or DEFAULT_TASK))
         return {"status": "started"}
+
+    @app.get("/config")
+    async def config():
+        return {"agent": "real", "red_team": False, **(info or {})}
 
     @app.get("/status")
     async def status():

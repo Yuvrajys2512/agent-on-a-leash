@@ -30,6 +30,8 @@ button.reject { background: var(--block); color: #fff; border-color: var(--block
 .pill { padding: 2px 10px; border-radius: 99px; background: var(--bg); border: 1px solid var(--line); color: var(--muted); font-size: 12px; }
 .pill.running { color: var(--accent); border-color: var(--accent); }
 .pill.error { color: var(--block); border-color: var(--block); }
+.pill.sim { color: var(--ask); border-color: var(--ask); background: var(--ask-bg); }
+.sim-tag { display: inline-block; margin-left: 6px; font-size: 11px; font-weight: 700; padding: 1px 8px; border-radius: 4px; color: var(--ask); background: var(--ask-bg); border: 1px dashed var(--ask); }
 #banner { background: var(--block-bg); color: var(--block); padding: 8px 16px; border-bottom: 1px solid var(--line); }
 main { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); gap: 12px; padding: 12px; min-height: 0; }
 section { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; display: flex; flex-direction: column; min-height: 0; min-width: 0; }

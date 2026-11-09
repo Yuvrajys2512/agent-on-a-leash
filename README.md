@@ -42,14 +42,26 @@ uvicorn app.api.server:app
 
 Open <http://localhost:8000>, press **Run agent**.
 
-**Two ways to run the agent**
+**Three ways to run the agent**
 
 | Mode | How | Needs |
 |---|---|---|
-| Scripted agent (no AI, same trick email, fully repeatable) | PowerShell: `$env:AGENT="fake"; uvicorn app.api.server:app` <br> macOS/Linux: `AGENT=fake uvicorn app.api.server:app` | nothing |
 | Real AI agent (default) | `uvicorn app.api.server:app` | `ANTHROPIC_API_KEY` in `.env` |
+| Real AI + **simulated** attack ("red-team mode") | PowerShell: `$env:AGENT_RED_TEAM="1"; uvicorn app.api.server:app` <br> macOS/Linux: `AGENT_RED_TEAM=1 uvicorn app.api.server:app` | `ANTHROPIC_API_KEY` |
+| Scripted agent (no AI, same story every time) | PowerShell: `$env:AGENT="fake"; uvicorn app.api.server:app` <br> macOS/Linux: `AGENT=fake uvicorn app.api.server:app` | nothing |
 
 Put your own key in `.env` (it is git-ignored; never commit it). `AGENT_MODEL` in `.env` picks the model.
+The header of the page always says which mode is running.
+
+**Why there is a simulated attack.** We tested the real models against the trick email: 0 of 25 live runs fell for
+it (four model versions, three wordings of the email, even with a task that said to handle everything without
+asking). They label it as suspicious every time. That is good news for users, but it means a real run never shows
+the leash stopping anything. So the demo shows the thing the leash is *for*: it must hold **even if the agent is
+compromised**. In red-team mode the real AI works normally, and right after it reads the trick email the harness
+proposes what a compromised agent would do (three forwards of invoices to an outside address). Those actions are
+labelled `[SIMULATED COMPROMISE]`, shown with a "simulated attack" tag in the UI, and go through exactly the same
+gate as everything else. The scripted agent does the same without needing a key. Nothing in the rules knows or
+cares that the attack is simulated.
 
 To see what the AI does against a gate that approves everything (no UI): `python -m app.agent.run`.
 

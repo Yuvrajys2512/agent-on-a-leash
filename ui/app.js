@@ -63,8 +63,10 @@ function addCard(ev) {
   const { action: a, decision: d } = ev;
   const feed = $("feed");
   feed.querySelector(".empty")?.remove();
+  const simulated = (a.rationale || "").startsWith("[SIMULATED COMPROMISE]");
   const card = h("div", { class: `card ${d.verdict}` },
-    h("div", {}, h("span", { class: `badge ${d.verdict}` }, d.verdict), " ", h("span", { class: "muted" }, `rule: ${d.rule_id}`)),
+    h("div", {}, h("span", { class: `badge ${d.verdict}` }, d.verdict), " ", h("span", { class: "muted" }, `rule: ${d.rule_id}`),
+      simulated ? h("span", { class: "sim-tag", title: "This action was injected by the test harness to simulate a compromised agent." }, "simulated attack") : null),
     h("div", { class: "what" }, describe(a)),
     a.rationale ? h("div", { class: "rationale" }, `Agent: “${a.rationale}”`) : null,
     h("div", { class: "why" }, d.reason, d.flags.length ? ` [${d.flags.join(", ")}]` : ""),
@@ -159,6 +161,22 @@ function connect() {
   es.onmessage = (m) => onEvent(JSON.parse(m.data));
 }
 
+// ---------- which agent is running (so nobody mistakes a simulated attack for a real one) ----------
+async function loadConfig() {
+  try {
+    const c = await api("/config");
+    const label = c.agent === "fake" ? "Scripted agent: attack is simulated"
+      : c.red_team ? "Real AI + simulated attack (red-team mode)" : "Real AI agent";
+    const m = $("mode");
+    m.textContent = label;
+    m.className = "pill" + (c.agent === "fake" || c.red_team ? " sim" : "");
+    m.title = c.agent === "fake" ? "No AI: a fixed script replays the whole story, including the trick."
+      : c.red_team ? "The real AI works normally. After it reads the trick email the harness proposes what a compromised agent would do."
+      : "The real AI decides what to do. Current models usually refuse the trick email.";
+    m.hidden = false;
+  } catch { /* the badge is a nicety; the page works without it */ }
+}
+
 // ---------- buttons ----------
 $("run-btn").addEventListener("click", async () => {
   try { await api("/run", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }); }
@@ -168,4 +186,4 @@ $("reset-btn").addEventListener("click", async () => { try { await api("/reset",
 $("rules-btn").addEventListener("click", () => { $("rules-panel").hidden = false; });
 $("rules-close").addEventListener("click", () => { $("rules-panel").hidden = true; });
 
-(async () => { await loadInbox(); await Promise.all([loadLog(), loadRules()]); connect(); })();
+(async () => { await loadInbox(); await Promise.all([loadLog(), loadRules(), loadConfig()]); connect(); })();

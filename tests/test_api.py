@@ -133,3 +133,13 @@ def test_ui_is_served(tmp_path, mb):
         assert r.status_code == 200 and "Agent on a Leash" in r.text
         assert c.get("/app.js").status_code == 200 and c.get("/style.css").status_code == 200
         assert c.get("/inbox").status_code == 200  # API routes still win over the static mount
+
+
+def test_config_tells_the_ui_which_agent_is_running(tmp_path, mb):
+    default = create_app(mb, fake_agent, audit_path=str(tmp_path / "a.jsonl"), ui_dir="nope")
+    red = create_app(mb, fake_agent, audit_path=str(tmp_path / "b.jsonl"), ui_dir="nope",
+                     info={"agent": "real", "red_team": True})
+    with TestClient(default) as c:
+        assert c.get("/config").json() == {"agent": "real", "red_team": False}
+    with TestClient(red) as c:
+        assert c.get("/config").json() == {"agent": "real", "red_team": True}
