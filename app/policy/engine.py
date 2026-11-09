@@ -9,6 +9,7 @@ Flags computed for each action (rules match on them with `flags_all`):
   injection_suspected:<email id>            an email it read contains instructions aimed at an AI
   untrusted_recipient:<email id>            the external recipient's address came from that email's text
   bulk                                      3rd+ forward of different emails to the same external address
+  pii / pii:<kind>                          what would be sent contains an IBAN, phone number or a known person's name
 A rule flag without a colon (e.g. `injection_suspected`) matches any flag of that family.
 
 Rule reasons may contain {placeholders} (see `details` below); they are filled in per action.
@@ -19,6 +20,7 @@ from app.contracts import (
     ActionType, AuditEntry, Decision, Email, MailboxProtocol, ProposedAction, RuleHit, Verdict, is_internal,
 )
 from app.policy.injection import addresses_in, scan, verdict as injection_verdict
+from app.policy.pii import KIND_LABEL, find_pii, names_from_addresses, redact
 from app.policy.rules import Rule, load_rules
 
 DEFAULT_RULE_ID = "default-ask"
@@ -39,6 +41,11 @@ def _recipients_from_params(action: ProposedAction) -> list[str]:
     return [to] if isinstance(to, str) else list(to)
 
 
+def _clip(text: str, n: int = 220) -> str:
+    text = " ".join(text.split())
+    return text if len(text) <= n else text[:n] + "..."
+
+
 class PolicyEngine:
     def __init__(self, rules_path: str = "rules.yaml") -> None:
         self.rules_path = rules_path
@@ -51,6 +58,21 @@ class PolicyEngine:
         if action.type == ActionType.REPLY:
             return [mailbox.get(action.email_id).sender]
         return None
+
+    @staticmethod
+    def outgoing_text(action: ProposedAction, mailbox: MailboxProtocol) -> str:
+        """The text that would actually leave: the agent's own words, plus the quoted original for a forward."""
+        text = str(action.params.get("body") or "")
+        if action.type == ActionType.FORWARD:
+            e = mailbox.get(action.email_id)
+            text += f"\n\n{e.subject}\n{e.body}"
+        return text
+
+    @staticmethod
+    def known_names(mailbox: MailboxProtocol) -> set[str]:
+        lister = getattr(mailbox, "list", None)  # small test mailboxes may not have list()
+        emails = lister() if callable(lister) else []
+        return names_from_addresses(a for e in emails for a in [e.sender, *e.to])
 
     def analyze(self, action: ProposedAction, mailbox: MailboxProtocol,
                 history: list[AuditEntry] | None = None) -> tuple[list[str], dict[str, str]]:
@@ -69,6 +91,18 @@ class PolicyEngine:
                 flags.append("external_recipient")
             external = [r.lower() for r in recipients if not is_internal(r)]
             details["recipients"] = ", ".join(recipients) or "(nobody)"
+
+        # Personal data in what would leave. A person's own name going back to them is not a leak.
+        if recipients is not None:
+            text = self.outgoing_text(action, mailbox)
+            own = names_from_addresses(recipients)
+            hits = find_pii(text, self.known_names(mailbox) - own)
+            if hits:
+                kinds = list(dict.fromkeys(h.kind for h in hits))
+                flags.append("pii")
+                flags.extend(f"pii:{k}" for k in kinds)
+                details["pii_kinds"] = ", ".join(KIND_LABEL[k] for k in kinds)
+                details["preview"] = _clip(redact(text, hits))
 
         # Everything the agent has read, plus the email it is acting on.
         ids = list(dict.fromkeys([*action.context_email_ids, action.email_id]))
