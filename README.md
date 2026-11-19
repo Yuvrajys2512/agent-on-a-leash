@@ -1,5 +1,8 @@
 # Agent on a Leash
 
+[![CI](https://github.com/Yuvrajys2512/agent-on-a-leash/actions/workflows/ci.yml/badge.svg)](https://github.com/Yuvrajys2512/agent-on-a-leash/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 An AI agent works through a mailbox for you, but it can only **propose** actions. Every action is shown to you
 before it happens, passes through rules you can read (**allow**, **ask you**, or **block**), and is written to an
 audit log that explains why. A trick email that tells the agent to send data somewhere is caught and blocked,
